@@ -34,7 +34,197 @@ F_early_long  <- read_csv(here("F_early_long.csv"))
 
 F_early_long <- subset(F_early_long, `f-GCM` < 6000 )
 
+##### Analysis #####
 
+#####  1.1 Survival to adulthood  #####
+
+# Sample size:
+
+dim(F_early_long) #68 obs
+ggplot(F_early_long, aes (x = Survival_Ad)) +
+  geom_bar() +
+  labs (x = "Survival_Ad", y = "count")
+table(F_early_long$Survival_Ad) # NO 21 Yes 48
+
+# Checking formatting of response variable
+is.factor(F_early_long$Survival_Ad) #FALSE
+F_early_long$Survival_Ad <- as.factor(F_early_long$Survival_Ad)
+contrasts(F_early_long$Survival_Ad)
+
+F_early_long$Survival_Ad <- droplevels(F_early_long$Survival_Ad)
+levels(F_early_long$Survival_Ad)
+
+
+# GLM:
+
+F_early_long_Surv <- F_early_long
+
+# Normalization of variables to mean 0 and sd 1
+F_early_long_Surv$`maternal rank` <- scale(F_early_long_Surv$`maternal rank`)
+F_early_long_Surv$`Ancylostoma egg load` <- scale(F_early_long_Surv$`Ancylostoma egg load`)
+F_early_long_Surv$Polyparasitism <- scale(F_early_long_Surv$Polyparasitism)
+F_early_long_Surv$`f-IgA` <- scale(F_early_long_Surv$`f-IgA`)
+F_early_long_Surv$`f-mucin` <- scale(F_early_long_Surv$`f-mucin`)
+F_early_long_Surv$`f-GCM` <- scale(F_early_long_Surv$`f-GCM`)
+
+model_survival <- glm (Survival_Ad ~ `maternal rank` +
+                         `Ancylostoma egg load` + Polyparasitism + `f-IgA` + `f-mucin` + `f-GCM`,
+                       family = "binomial", data = F_early_long_Surv)
+summary(model_survival)
+
+exp(cbind(Odds_Ratio = coef(model_survival), confint(model_survival)))
+
+# Likelihood-Ratio-Tests (LRT)
+update_nested <- function(object, formula., ..., evaluate = TRUE){
+  update(object = object, formula. = formula., data = object$model, ..., evaluate = evaluate)
+}
+
+m1 =  glm (Survival_Ad ~ `maternal rank` +
+             `f-IgA` + `f-mucin` + Polyparasitism +  `Ancylostoma egg load` +
+             `f-GCM`,
+           family = "binomial", data = F_early_long_Surv)
+m2 = update_nested(m1, . ~ . - `maternal rank`)
+m3 = update_nested(m1, . ~ . - `f-IgA`)
+m4 = update_nested(m1, . ~ . - `Ancylostoma egg load`)
+m5 = update_nested(m1, . ~ . - `maternal rank` - `f-IgA` - `Ancylostoma egg load` - `f-mucin` - Polyparasitism - `f-GCM`)
+m6 = update_nested(m1, . ~ . - `f-mucin`)
+m7 = update_nested(m1, . ~ . - Polyparasitism)
+m8 = update_nested(m1, . ~ . - `f-GCM`)
+
+
+lrtest(m4,m1) # Ancylostoma egg load
+lrtest(m3,m1) #f-IgA
+lrtest(m2,m1) # maternal rank
+lrtest(m6,m1) # f-mucin
+lrtest(m7,m1) # Polyparasitism
+lrtest(m8,m1) # f-GCM
+
+##### 1.2. AFR #####
+
+# Removal individuals that didn´t survived until adulthood
+
+F_early_long_AFR <- subset(F_early_long, Survival_Ad == "Yes" )
+
+# create Event variable:  reproduced or not
+F_early_long_AFR <- F_early_long_AFR %>%
+  mutate(Reproduced = case_when(AFR >= 0  ~ 1,
+                                is.na(AFR) ~ 0))
+
+# Create variable for Time to Event variable (YEAR)
+#females with AFR -> AFR
+#females never reproduced and dead -> age of death
+#female never reproduced still alive -> current date of dataset - birthdate
+current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
+library(lubridate)
+int <- interval(ymd(F_early_long_AFR$birthdate), ymd(F_early_long_AFR$deathdate))
+F_early_long_AFR$age_death <- time_length(int, "year")
+
+int1 <- interval(ymd(F_early_long_AFR$birthdate), ymd(current_date))
+F_early_long_AFR$current_age <- time_length(int1, "year")
+
+F_early_long_AFR<- F_early_long_AFR%>%
+  mutate(tafr = case_when(AFR >=0 ~ AFR,
+                          is.na(AFR) & age_death >= 0 ~ age_death,
+                          is.na(AFR) & is.na(age_death) ~ current_age))
+
+# Cox model:
+AFR_object <- Surv(time = F_early_long_AFR$tafr, event = F_early_long_AFR$Reproduced)
+AFR_object
+
+# Normalization of variables to mean 0 and sd 1
+F_early_long_AFR$`Ancylostoma egg load` <- scale(F_early_long_AFR$`Ancylostoma egg load`)
+F_early_long_AFR$`f-IgA` <- scale(F_early_long_AFR$`f-IgA`)
+F_early_long_AFR$`f-GCM` <- scale(F_early_long_AFR$`f-GCM`)
+F_early_long_AFR$`maternal rank` <- scale(F_early_long_AFR$`maternal rank`)
+
+AFR_cox_model <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-IgA` + `f-GCM` , data = F_early_long_AFR)
+summary(AFR_cox_model)
+
+##### LRT from anova function
+m1 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-IgA` + `f-GCM` , data = F_early_long_AFR)
+m0 <- update(m1, . ~ 1)
+m2 <- coxph(AFR_object ~  `Ancylostoma egg load`  + `f-IgA` +  `f-GCM` , data = F_early_long_AFR)
+m3 <- coxph(AFR_object ~  `maternal rank` +  `f-IgA` +  `f-GCM` , data = F_early_long_AFR)
+m4 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-GCM` , data = F_early_long_AFR)
+m5 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` +  `f-IgA`, data = F_early_long_AFR)
+
+anova(m2,m1) #maternal rank
+anova(m3,m1) #Ancylostoma egg load
+anova(m4,m1) #f-IgA
+anova(m5,m1) # f-GCM
+
+
+##### 1.3 Longeviy #####
+
+# Removal of outlier (high count for Ancylostoma egg load, unveiled with DHARMa)
+F_early_longv <- subset(F_early_long,`Ancylostoma egg load` < 21000 )
+
+# Create Event variable: died or not
+F_early_longv$Longevity[is.na(F_early_longv$Longevity)] <- "-"
+F_early_longv<- F_early_longv %>%
+  mutate(Died = case_when(Longevity >= 0 ~ 1,
+                          Longevity == "-" ~ 0))
+F_early_longv$Died <- as.numeric(F_early_longv$Died)
+
+
+# Create variable Time to Event (YEAR)
+F_early_longv$Longevity <- as.numeric(F_early_longv$Longevity)
+F_early_longv$sample_years <- as.numeric(F_early_longv$sample_years)
+
+#females with death date -> age_death
+#females without death date  -> current_age
+current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
+int <- interval(ymd(F_early_longv$birthdate), ymd(F_early_longv$deathdate))
+F_early_longv$age_death_years <- time_length(int, "year")
+
+int1 <- interval(ymd(F_early_longv$birthdate), ymd(current_date))
+F_early_longv$current_age <- time_length(int1, "year")
+
+F_early_longv$age_death_years <- as.numeric(F_early_longv$age_death_years)
+F_early_longv$current_age <- as.numeric(F_early_longv$current_age)
+
+F_early_longv<- F_early_longv %>%
+  mutate(ttdeath = case_when(deathdate >=0 ~ age_death_years,
+                             TRUE ~ current_age))
+
+F_early_longv$ttdeath <- as.numeric(F_early_longv$ttdeath)
+
+
+# Cox model:
+Long_object <- Surv(time = F_early_longv$ttdeath, event = F_early_longv$Died)
+Long_object
+
+# Normalization of variables to mean 0 and sd 1
+F_early_longv$`Ancylostoma egg load`<- scale(F_early_longv$`Ancylostoma egg load`)
+F_early_longv$`f-mucin`<- scale(F_early_longv$`f-mucin`)
+F_early_longv$`f-IgA`<- scale(F_early_longv$`f-IgA`)
+F_early_longv$Polyparasitism <-scale(F_early_longv$Polyparasitism)
+F_early_longv$`f-GCM` <- scale(F_early_longv$`f-GCM`)
+F_early_longv$`maternal rank` <- scale(F_early_longv$`maternal rank`)
+
+cox_longevity <- coxph(Long_object ~ `maternal rank` + `Ancylostoma egg load` + Polyparasitism + `f-IgA` + `f-mucin` + `f-GCM`, data = F_early_longv)
+summary(cox_longevity)
+
+
+# LRT from anova function
+m1 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
+m0 <- update(m1, . ~ 1)
+m2 <- coxph(Long_object ~  `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
+m3 <- coxph(Long_object ~  `maternal rank` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
+m4 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
+m5 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` + Polyparasitism +  `f-mucin` + `f-GCM` , data = F_early_longv)
+m6 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-GCM` , data = F_early_longv)
+m7 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin`, data = F_early_longv)
+
+anova(m2,m1) #maternal rank
+anova(m3,m1) #Ancylostoma egg load
+anova(m4,m1) #Polyparasitsm
+anova(m5,m1) #f-IgA
+anova(m6,m1) #f-mucin
+anova(m7,m1) #f-GCM
+
+
+##### Figures #####
 ##### Fig.S1 #####
 
 #samples completed for all assays
@@ -60,27 +250,6 @@ sampling_distribution_all <- ggplot(F_early_long, aes(ID, sample_days)) +
 sampling_distribution_final_all <- sampling_distribution_all +
   theme (axis.text.y = element_blank(), axis.ticks.y = element_blank())
 sampling_distribution_final_all
-
-
-##### Analysis #####
-
-#####  1.1 Survival to adulthood  #####
-
-# Sample size:
-
-dim(F_early_long) #68 obs
-ggplot(F_early_long, aes (x = Survival_Ad)) +
-  geom_bar() +
-  labs (x = "Survival_Ad", y = "count")
-table(F_early_long$Survival_Ad) # NO 21 Yes 48
-
-# Checking formatting of response variable
-is.factor(F_early_long$Survival_Ad) #FALSE
-F_early_long$Survival_Ad <- as.factor(F_early_long$Survival_Ad)
-contrasts(F_early_long$Survival_Ad)
-
-F_early_long$Survival_Ad <- droplevels(F_early_long$Survival_Ad)
-levels(F_early_long$Survival_Ad)
 
 ##### Fig.S2 #####
 # Independent variables
@@ -143,185 +312,11 @@ plot_cort <- ggplot(F_early_long, aes(`f-GCM`)) +
 
 Sampling_plot <- grid.arrange (plot_rank, plot_Ancy,plot_rich, plot_IgA, plot_mucin, plot_cort, nrow=3)
 
+##### Fig.2 #####
 
-# GLM:
-
-F_early_long_Surv <- F_early_long
-
-# Normalization of variables to mean 0 and sd 1
-F_early_long_Surv$`maternal rank` <- scale(F_early_long_Surv$`maternal rank`)
-F_early_long_Surv$`Ancylostoma egg load` <- scale(F_early_long_Surv$`Ancylostoma egg load`)
-F_early_long_Surv$Polyparasitism <- scale(F_early_long_Surv$Polyparasitism)
-F_early_long_Surv$`f-IgA` <- scale(F_early_long_Surv$`f-IgA`)
-F_early_long_Surv$`f-mucin` <- scale(F_early_long_Surv$`f-mucin`)
-F_early_long_Surv$`f-GCM` <- scale(F_early_long_Surv$`f-GCM`)
-
-model_survival <- glm (Survival_Ad ~ `maternal rank` +
-                         `Ancylostoma egg load` + Polyparasitism + `f-IgA` + `f-mucin` + `f-GCM`,
-                       family = "binomial", data = F_early_long_Surv)
-summary(model_survival)
-
-exp(cbind(Odds_Ratio = coef(model_survival), confint(model_survival)))
-
-# Likelihood-Ratio-Tests (LRT)
-update_nested <- function(object, formula., ..., evaluate = TRUE){
-  update(object = object, formula. = formula., data = object$model, ..., evaluate = evaluate)
-}
-
-m1 =  glm (Survival_Ad ~ `maternal rank` +
-             `f-IgA` + `f-mucin` + Polyparasitism +  `Ancylostoma egg load` +
-             `f-GCM`,
-           family = "binomial", data = F_early_long_Surv)
-m2 = update_nested(m1, . ~ . - `maternal rank`)
-m3 = update_nested(m1, . ~ . - `f-IgA`)
-m4 = update_nested(m1, . ~ . - `Ancylostoma egg load`)
-m5 = update_nested(m1, . ~ . - `maternal rank` - `f-IgA` - `Ancylostoma egg load` - `f-mucin` - Polyparasitism - `f-GCM`)
-m6 = update_nested(m1, . ~ . - `f-mucin`)
-m7 = update_nested(m1, . ~ . - Polyparasitism)
-m8 = update_nested(m1, . ~ . - `f-GCM`)
-
-
-lrtest(m4,m1) # Ancylostoma egg load
-lrtest(m3,m1) #f-IgA
-lrtest(m2,m1) # maternal rank
-lrtest(m6,m1) # f-mucin
-lrtest(m7,m1) # Polyparasitism
-lrtest(m8,m1) # f-GCM
-
-##### Fig. 1 #####
-
-F_early_long_Surv_plot <- F_early_long
-is.factor(F_early_long_Surv_plot$Survival_Ad) #FALSE
-F_early_long_Surv_plot$Survival_Ad <- as.factor(F_early_long_Surv_plot$Survival_Ad)
-contrasts(F_early_long_Surv_plot$Survival_Ad)
-
-F_early_long_Surv_plot$Survival_Ad <- droplevels(F_early_long_Surv_plot$Survival_Ad)
-levels(F_early_long_Surv_plot$Survival_Ad)
-F_early_long_Surv_plot <- F_early_long_Surv_plot %>%
-  rename(maternal_rank = `maternal rank`,
-         Ancylostoma_egg_load = `Ancylostoma egg load`,
-         f_IgA = `f-IgA`, f_mucin = `f-mucin`,
-         f_GCM = `f-GCM`)
-
-model_survival <- glm (Survival_Ad ~ maternal_rank +
-                         Ancylostoma_egg_load + Polyparasitism + f_IgA + f_mucin + f_GCM,
-                       family = "binomial", data = F_early_long_Surv_plot)
-summary(model_survival)
-
-# Maternal_plot
-Maternal_plot <- ggpredict(model_survival, terms = c("maternal_rank[all]")) |>
-  plot(colors = "darkorchid4", show_data = TRUE, jitter = 0.05) +
-  labs(subtitle = "a)",
-       title = NULL,
-       x = "maternal rank",
-       y = "Predicted probabilities of Survival to Adulthood") +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 14),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        plot.subtitle = element_text(face = "bold", size = 18))
-Maternal_plot
-
-# IgA_plot
-IgA_plot <- ggpredict(model_survival, terms = c("f_IgA[all]")) |>
-  plot(colors = "#C71585", show_data = TRUE, jitter = 0.05) +
-  labs(subtitle = "b)",
-       title = NULL,
-       x = "f-IgA level",
-       y = NULL) +
-  scale_y_continuous(labels = NULL) +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 14),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        plot.subtitle = element_text(face = "bold", size = 18))
-
-# Ancy_plot
-Ancy_plot <- ggpredict(model_survival, terms = c("Ancylostoma_egg_load[all]")) |>
-  plot(colors = "#ADD8E6", show_data = TRUE, jitter = 0.05) +
-  labs(subtitle = "c)",
-       title = NULL,
-       x = "Ancylostoma egg load",
-       y = NULL) +
-  scale_y_continuous(labels = NULL) +
-  theme(axis.title = element_text(size = 16),
-        axis.text = element_text(size = 14),
-        panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        plot.subtitle = element_text(face = "bold", size = 18))
-
-# Combine the plots into a single row
-Survival_plot <- Maternal_plot + IgA_plot + Ancy_plot
-Survival_plot
-
-# Save file
-ggsave(
-  filename = "Fig.1.png",
-  plot = Survival_plot,
-  width = 297,
-  height = 210,
-  units = "mm",
-  dpi = 300
-)
-
-
-
-
-##################################################################################
-## 1.2. AFR ###
-#################################################################################
-###########################################
-#removed individuals that didn´t survived until adulthood
-
-F_early_long_AFR <- subset(F_early_long, Survival_Ad == "Yes" )
-
-
-#create event variable:  reproduced or not
-F_early_long_AFR <- F_early_long_AFR %>%
-  mutate(Reproduced = case_when(AFR >= 0  ~ 1,
-                                is.na(AFR) ~ 0))
-
-#create variables for time to event variable (YEAR)
-#females with AFR -> AFR
-#females never reproduced and dead -> age of death
-#female never reproduced still alive -> current date of dataset - birthdate
-current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
-library(lubridate)
-int <- interval(ymd(F_early_long_AFR$birthdate), ymd(F_early_long_AFR$deathdate))
-F_early_long_AFR$age_death <- time_length(int, "year")
-
-int1 <- interval(ymd(F_early_long_AFR$birthdate), ymd(current_date))
-F_early_long_AFR$current_age <- time_length(int1, "year")
-
-
-# create time to event variable
-F_early_long_AFR<- F_early_long_AFR%>%
-  mutate(tafr = case_when(AFR >=0 ~ AFR,
-                          is.na(AFR) & age_death >= 0 ~ age_death,
-                          is.na(AFR) & is.na(age_death) ~ current_age))
-
-
-# Fit the Cox proportional hazard model
-AFR_object <- Surv(time = F_early_long_AFR$tafr, event = F_early_long_AFR$Reproduced)
-AFR_object
-
-# Fit a Cox proportional hazards model with normalized variables
-# scale variables to mean 0 and sd 1 #
-F_early_long_AFR$`Ancylostoma egg load` <- scale(F_early_long_AFR$`Ancylostoma egg load`)
-F_early_long_AFR$`f-IgA` <- scale(F_early_long_AFR$`f-IgA`)
-F_early_long_AFR$`f-GCM` <- scale(F_early_long_AFR$`f-GCM`)
-F_early_long_AFR$`maternal rank` <- scale(F_early_long_AFR$`maternal rank`)
-
-AFR_cox_model <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-IgA` + `f-GCM` , data = F_early_long_AFR)
-summary(AFR_cox_model)
-
-
-####### Hazard ratios plot - Fig.2
-#select data
 coefs <- AFR_cox_model$coefficients
 var_covar <- vcov(AFR_cox_model)
 
-# Calculate confidence intervals
 plot_data <- data.frame(
   term = names(coefs),
   HR = exp(coefs),
@@ -329,12 +324,9 @@ plot_data <- data.frame(
   upper = exp(coefs + 1.96 * sqrt(diag(var_covar)))
 )
 
-# force order of predictors
 model_order <- names(coef(AFR_cox_model))
 plot_data$term <- factor(plot_data$term, levels = model_order)
 
-
-#plot
 forest_plot <- ggplot(plot_data, aes(x = HR, y = term)) +
   geom_point(size = 3, shape = 15) +  # Square points
   geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2) +
@@ -363,151 +355,13 @@ forest_plot <- forest_plot +
   )
 forest_plot
 
-#save file
+# Save file
 ggsave("Fig.2.png",
        plot = forest_plot,
        width = 210,
        height = 148.5,
        units = "mm",
        dpi = 300)
-
-####### LRT from anova
-## fit full model and variants
-m1 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-IgA` + `f-GCM` , data = F_early_long_AFR)
-m0 <- update(m1, . ~ 1)
-m2 <- coxph(AFR_object ~  `Ancylostoma egg load`  + `f-IgA` +  `f-GCM` , data = F_early_long_AFR)
-m3 <- coxph(AFR_object ~  `maternal rank` +  `f-IgA` +  `f-GCM` , data = F_early_long_AFR)
-m4 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` + `f-GCM` , data = F_early_long_AFR)
-m5 <- coxph(AFR_object ~  `maternal rank` + `Ancylostoma egg load` +  `f-IgA`, data = F_early_long_AFR)
-
-
-## test
-anova(m0,m1) # intercept
-anova(m2,m1) #maternal rank
-anova(m3,m1) #Ancylostoma egg load
-anova(m4,m1) #f-IgA
-anova(m5,m1) # f-GCM
-
-#####################################################
-## Confirmation 6m
-
-# restrict dataset to observations within 0.5 years of living
-F_early_long_AFR <- subset(F_early_long, Survival_Ad == "Yes" )
-F_early_long_AFR_6m <- subset(F_early_long_AFR,F_early_long_AFR$sample_days<= 183)
-dim(F_early_long_AFR_6m) #34 obs
-length(unique(F_early_long_AFR_6m$ID)) # 34 female individuals
-sum(duplicated(F_early_long_AFR_6m)) # 0  duplicates
-
-#create event variable:  reproduced or not
-F_early_long_AFR_6m <- F_early_long_AFR_6m %>%
-  mutate(Reproduced = case_when(AFR >= 0  ~ 1,
-                                is.na(AFR) ~ 0))
-
-#create variables for time to event variable (YEAR)
-#females with AFR -> AFR
-#females never reproduced and dead -> age of death
-#female never reproduced still alive -> current date of dataset - birthdate
-current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
-library(lubridate)
-int <- interval(ymd(F_early_long_AFR_6m$birthdate), ymd(F_early_long_AFR_6m$deathdate))
-F_early_long_AFR_6m$age_death <- time_length(int, "year")
-
-int1 <- interval(ymd(F_early_long_AFR_6m$birthdate), ymd(current_date))
-F_early_long_AFR_6m$current_age <- time_length(int1, "year")
-
-
-# create time to event variable
-F_early_long_AFR_6m<- F_early_long_AFR_6m%>%
-  mutate(tafr = case_when(AFR >=0 ~ AFR,
-                          is.na(AFR) & age_death >= 0 ~ age_death,
-                          is.na(AFR) & is.na(age_death) ~ current_age))
-
-
-# Fit a Cox proportional hazards model
-# scale variables #
-F_early_long_AFR_6m$`Ancylostoma egg load` <- scale(F_early_long_AFR_6m$`Ancylostoma egg load`)
-F_early_long_AFR_6m$`f-IgA` <- scale(F_early_long_AFR_6m$`f-IgA`)
-F_early_long_AFR_6m$`f-GCM` <- scale(F_early_long_AFR_6m$`f-GCM`)
-F_early_long_AFR_6m$`maternal rank 6m` <- scale(F_early_long_AFR_6m$`maternal rank 6m`)
-
-
-AFR_object_6m <- Surv(time = F_early_long_AFR_6m$tafr, event = F_early_long_AFR_6m$Reproduced)
-AFR_object_6m
-AFR_model_6m <- coxph(AFR_object_6m ~ `maternal rank 6m` +  `Ancylostoma egg load` +  `f-IgA` + `f-GCM` , data = F_early_long_AFR_6m)
-summary(AFR_model_6m)
-
-
-
-####### LRT from anova
-## fit full model and variants
-m1 <- coxph(AFR_object_6m ~  `maternal rank 6m` + `Ancylostoma egg load` + `f-IgA` + `f-GCM` , data = F_early_long_AFR_6m)
-m0 <- update(m1, . ~ 1)
-m2 <- coxph(AFR_object_6m ~  `Ancylostoma egg load` + `f-IgA` + `f-GCM`, data =F_early_long_AFR_6m)
-m3 <- coxph(AFR_object_6m ~  `maternal rank 6m` +  `f-IgA` +  `f-GCM`, data = F_early_long_AFR_6m)
-m4 <- coxph(AFR_object_6m ~  `maternal rank 6m` + `Ancylostoma egg load` +  `f-GCM` , data = F_early_long_AFR_6m)
-m5 <- coxph(AFR_object_6m ~  `maternal rank 6m` + `Ancylostoma egg load` +  `f-IgA` , data = F_early_long_AFR_6m)
-
-
-## test
-anova(m0,m1) # intercept
-anova(m2,m1) #maternal rank
-anova(m3,m1) #Ancylostoma egg load
-anova(m4,m1) #f-IgA
-anova(m5,m1) #f-GCM
-
-
-
-##### 1.3 Longeviy #####
-
-# Removal of outlier (high count for Ancylostoma egg load, unveiled with DHARMa)
-F_early_longv <- subset(F_early_long,`Ancylostoma egg load` < 21000 )
-
-# Create Event variable: died or not
-F_early_longv$Longevity[is.na(F_early_longv$Longevity)] <- "-"
-F_early_longv<- F_early_longv %>%
-  mutate(Died = case_when(Longevity >= 0 ~ 1,
-                          Longevity == "-" ~ 0))
-F_early_longv$Died <- as.numeric(F_early_longv$Died)
-
-
-# Create variable Time to Event (YEAR)
-F_early_longv$Longevity <- as.numeric(F_early_longv$Longevity)
-F_early_longv$sample_years <- as.numeric(F_early_longv$sample_years)
-
-#females with death date -> age_death
-#females without death date  -> current_age
-current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
-int <- interval(ymd(F_early_longv$birthdate), ymd(F_early_longv$deathdate))
-F_early_longv$age_death_years <- time_length(int, "year")
-
-int1 <- interval(ymd(F_early_longv$birthdate), ymd(current_date))
-F_early_longv$current_age <- time_length(int1, "year")
-
-F_early_longv$age_death_years <- as.numeric(F_early_longv$age_death_years)
-F_early_longv$current_age <- as.numeric(F_early_longv$current_age)
-
-F_early_longv<- F_early_longv %>%
-  mutate(ttdeath = case_when(deathdate >=0 ~ age_death_years,
-                             TRUE ~ current_age))
-
-F_early_longv$ttdeath <- as.numeric(F_early_longv$ttdeath)
-
-
-# Cox model
-Long_object <- Surv(time = F_early_longv$ttdeath, event = F_early_longv$Died)
-Long_object
-
-# Normalization of variables to mean 0 and sd 1
-F_early_longv$`Ancylostoma egg load`<- scale(F_early_longv$`Ancylostoma egg load`)
-F_early_longv$`f-mucin`<- scale(F_early_longv$`f-mucin`)
-F_early_longv$`f-IgA`<- scale(F_early_longv$`f-IgA`)
-F_early_longv$Polyparasitism <-scale(F_early_longv$Polyparasitism)
-F_early_longv$`f-GCM` <- scale(F_early_longv$`f-GCM`)
-F_early_longv$`maternal rank` <- scale(F_early_longv$`maternal rank`)
-
-cox_longevity <- coxph(Long_object ~ `maternal rank` + `Ancylostoma egg load` + Polyparasitism + `f-IgA` + `f-mucin` + `f-GCM`, data = F_early_longv)
-summary(cox_longevity)
-
 
 ##### Fig. 3 #####
 coefs <- cox_longevity$coefficients
@@ -560,23 +414,6 @@ ggsave("Fig.3.png",
        height = 148.5,
        units = "mm",
        dpi = 300)
-
-# LRT from anova function
-m1 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
-m0 <- update(m1, . ~ 1)
-m2 <- coxph(Long_object ~  `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
-m3 <- coxph(Long_object ~  `maternal rank` +  Polyparasitism +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
-m4 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  `f-IgA` + `f-mucin` + `f-GCM` , data = F_early_longv)
-m5 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` + Polyparasitism +  `f-mucin` + `f-GCM` , data = F_early_longv)
-m6 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-GCM` , data = F_early_longv)
-m7 <- coxph(Long_object ~  `maternal rank` + `Ancylostoma egg load` +  Polyparasitism +  `f-IgA` + `f-mucin`, data = F_early_longv)
-
-anova(m2,m1) #maternal rank
-anova(m3,m1) #Ancylostoma egg load
-anova(m4,m1) #Polyparasitsm
-anova(m5,m1) #f-IgA
-anova(m6,m1) #f-mucin
-anova(m7,m1) #f-GCM
 
 ##### Fig. 4 #####
 
