@@ -28,7 +28,7 @@ library(scales)
 
 ##### Dataset importation and formatting #####
 
-F_early_long  <- read_csv(here("F_early_long.csv"))
+F_early_long <- read_delim(here("F_early_long.csv"), delim = ";")
 
 # Removal of outlier (fGCM extreme value):
 
@@ -42,8 +42,6 @@ F_early_long <- subset(F_early_long, `f-GCM` < 6000 )
 # Sample size:
 F_early_long_6m <- subset(F_early_long,F_early_long$sample_days<= 183)
 dim(F_early_long_6m) #51obs
-length(unique(F_early_long_6m$ID)) # 51 female individuals
-sum(duplicated(F_early_long_6m)) # 0  duplicates
 
 # Checking formatting of response variable
 is.factor(F_early_long_6m$Survival_Ad) #FALSE
@@ -66,7 +64,7 @@ model_survival_6m <- glm (Survival_Ad ~ `maternal rank` +
                           family = "binomial", data = F_early_long_6m)
 summary(model_survival_6m)
 
-exp(cbind(Odds_Ratio = coef(model_survival), confint(model_survival)))
+exp(cbind(Odds_Ratio = coef(model_survival_6m), confint(model_survival_6m)))
 
 # LRT
 update_nested <- function(object, formula., ..., evaluate = TRUE){
@@ -109,11 +107,10 @@ F_early_long_AFR_6m <- F_early_long_AFR_6m %>%
 #females never reproduced and dead -> age of death
 #female never reproduced still alive -> current date of dataset - birthdate
 current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
-library(lubridate)
-int <- interval(ymd(F_early_long_AFR_6m$birthdate), ymd(F_early_long_AFR_6m$deathdate))
+int <- interval(dmy (F_early_long_AFR_6m$birthdate), dmy (F_early_long_AFR_6m$deathdate))
 F_early_long_AFR_6m$age_death <- time_length(int, "year")
 
-int1 <- interval(ymd(F_early_long_AFR_6m$birthdate), ymd(current_date))
+int1 <- interval(dmy (F_early_long_AFR_6m$birthdate), (current_date))
 F_early_long_AFR_6m$current_age <- time_length(int1, "year")
 
 F_early_long_AFR_6m<- F_early_long_AFR_6m%>%
@@ -177,10 +174,10 @@ F_early_longv_6m$sample_years <- as.numeric(F_early_longv_6m$sample_years)
 #females with death date -> age_death
 #females without death date  -> current_age
 current_date = as.Date("2023-03-23", format = "%Y-%m-%d")
-int <- interval(ymd(F_early_longv_6m$birthdate), ymd(F_early_longv_6m$deathdate))
+int <- interval(dmy (F_early_longv_6m$birthdate), dmy (F_early_longv_6m$deathdate))
 F_early_longv_6m$age_death_years <- time_length(int, "year")
 
-int1 <- interval(ymd(F_early_longv_6m$birthdate), ymd(current_date))
+int1 <- interval(dmy (F_early_longv_6m$birthdate), (current_date))
 F_early_longv_6m$current_age <- time_length(int1, "year")
 
 F_early_longv_6m$age_death_years <- as.numeric(F_early_longv_6m$age_death_years)
