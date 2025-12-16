@@ -44,7 +44,7 @@ dim(F_early_long) #68 obs
 ggplot(F_early_long, aes (x = Survival_Ad)) +
   geom_bar() +
   labs (x = "Survival_Ad", y = "count")
-table(F_early_long$Survival_Ad) # NO 21 Yes 48
+table(F_early_long$Survival_Ad) # NO 20 Yes 48
 
 # Checking formatting of response variable
 is.factor(F_early_long$Survival_Ad) #FALSE
@@ -541,6 +541,7 @@ ggsave("Fig.4.png",
        height = 148.5,
        units = "mm",
        dpi = 300)
+Adj_curve
 
 
 sessionInfo()
