@@ -314,7 +314,80 @@ Sampling_plot <- grid.arrange (plot_rank, plot_Ancy,plot_rich, plot_IgA, plot_mu
 
 ##### Fig. 1 #####
 
+F_early_long_Surv_plot <- F_early_long
+is.factor(F_early_long_Surv_plot$Survival_Ad) #FALSE
+F_early_long_Surv_plot$Survival_Ad <- as.factor(F_early_long_Surv_plot$Survival_Ad)
+contrasts(F_early_long_Surv_plot$Survival_Ad)
 
+F_early_long_Surv_plot$Survival_Ad <- droplevels(F_early_long_Surv_plot$Survival_Ad)
+levels(F_early_long_Surv_plot$Survival_Ad)
+
+F_early_long_Surv_plot <- F_early_long_Surv_plot %>%
+  rename(maternal_rank = `maternal rank`,
+         Ancylostoma_egg_load = `Ancylostoma egg load`,
+         f_IgA = `f-IgA`, f_mucin = `f-mucin`,
+         f_GCM = `f-GCM`)
+
+model_survival <- glm (Survival_Ad ~ maternal_rank +
+                         Ancylostoma_egg_load + Polyparasitism + f_IgA + f_mucin + f_GCM,
+                       family = "binomial", data = F_early_long_Surv_plot)
+summary(model_survival)
+
+# Maternal_plot
+Maternal_plot <- ggpredict(model_survival, terms = c("maternal_rank[all]")) |>
+  plot(colors = "darkorchid4", show_data = TRUE, jitter = 0.05) +
+  labs(subtitle = "a)",
+       title = NULL,
+       x = "maternal rank",
+       y = "Predicted probabilities of Survival to Adulthood") +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.subtitle = element_text(face = "bold", size = 18))
+Maternal_plot
+
+# IgA_plot
+IgA_plot <- ggpredict(model_survival, terms = c("f_IgA[all]")) |>
+  plot(colors = "#C71585", show_data = TRUE, jitter = 0.05) +
+  labs(subtitle = "b)",
+       title = NULL,
+       x = "f-IgA level",
+       y = NULL) +
+  scale_y_continuous(labels = NULL) +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.subtitle = element_text(face = "bold", size = 18))
+
+# Ancy_plot
+Ancy_plot <- ggpredict(model_survival, terms = c("Ancylostoma_egg_load[all]")) |>
+  plot(colors = "#ADD8E6", show_data = TRUE, jitter = 0.05) +
+  labs(subtitle = "c)",
+       title = NULL,
+       x = "Ancylostoma egg load",
+       y = NULL) +
+  scale_y_continuous(labels = NULL) +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.subtitle = element_text(face = "bold", size = 18))
+
+# combine the plots into a single row
+Survival_plot <- Maternal_plot + IgA_plot + Ancy_plot
+Survival_plot
+
+#save file
+ggsave(
+  filename = "Survival.png",
+  plot = Survival_plot,
+  width = 297,
+  height = 210,
+  units = "mm",
+  dpi = 300
+)
 
 ##### Fig.2 #####
 
