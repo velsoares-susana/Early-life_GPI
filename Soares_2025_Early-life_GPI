@@ -706,7 +706,6 @@ ggsave("Fig.4.png",
        dpi = 300)
 
 
-
 sessionInfo()
 RStudio.Version()
 citation()
