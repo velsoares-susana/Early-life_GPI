@@ -51,6 +51,7 @@ contrasts(F_early_long_6m$Survival_Ad)
 F_early_long_6m$Survival_Ad <- droplevels(F_early_long_6m$Survival_Ad)
 levels(F_early_long_6m$Survival_Ad)
 
+# GLM:
 # Normalization of variables to mean 0 and sd 1
 F_early_long_6m$`maternal rank` <- scale(F_early_long_6m$`maternal rank`)
 F_early_long_6m$`Ancylostoma egg load` <- scale(F_early_long_6m$`Ancylostoma egg load`)
