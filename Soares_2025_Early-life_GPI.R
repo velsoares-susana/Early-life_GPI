@@ -101,7 +101,7 @@ lrtest(m8,m1) # f-GCM
 
 ##### 1.2. AFR #####
 
-# Removal individuals that didn´t survived until adulthood
+# Removal of individuals that didn´t survive until adulthood
 
 F_early_long_AFR <- subset(F_early_long, Survival_Ad == "Yes" )
 
@@ -154,7 +154,7 @@ anova(m4,m1) #f-IgA
 anova(m5,m1) # f-GCM
 
 
-##### 1.3 Longeviy #####
+##### 1.3 Longevity #####
 
 # Removal of outlier (high count for Ancylostoma egg load, unveiled with DHARMa)
 F_early_longv <- subset(F_early_long,`Ancylostoma egg load` < 21000 )
