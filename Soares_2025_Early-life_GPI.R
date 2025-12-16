@@ -381,7 +381,7 @@ Survival_plot
 
 #save file
 ggsave(
-  filename = "Fig1.png",
+  filename = "Fig.1.png",
   plot = Survival_plot,
   width = 297,
   height = 210,
