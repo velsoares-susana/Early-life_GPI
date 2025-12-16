@@ -1,21 +1,12 @@
 rstudioapi::writeRStudioPreference("data_viewer_max_columns", 1000L)
-#test
-#############################################################
-####       Early adversity - long term effects         #####
-############################################################
-#packages#
-install.packages("here")
-install.packages("tidyr")
-install.packages("meantables")
-install.packages("lubridate")
-install.packages("lmtest")
-install.packages("survival")
-install.packages("survminer")
-install.packages("ggforestplot")
-install.packages("broom")
 
+#======================================================================#
+#                                                                      #
+#          Costs of early-life GIP infections in spotted hyenas        #
+#                                                                      #
+#======================================================================#
 
-# Load required packages
+##### Packages ####
 library(here)
 here::here()
 library(readr)
@@ -35,28 +26,16 @@ require(ggeffects)
 library(broom)
 library(scales)
 
+##### Dataset importation and formatting #####
 
-#if need be
-ls() # # to see if there are any objects present loaded in the working environment
-rm(list=ls()) # # clearing the environment before running the script
+F_early_long  <- read_csv(here("F_early_long.csv"))
 
-#database to work on
-#F_early_long
+# Removal of outlier (fGCM extreme value):
 
-dim(F_early_long) #69 obs
-#removal of cortisol outlier
 F_early_long <- subset(F_early_long, `f-GCM` < 6000 )
 
-#descriptives
 
-F_early_long %>%
-  mean_table(AFR)
-F_early_long %>%
-  mean_table(Longevity)
-F_early_long %>%
-  mean_table(sample_years)
-
-####plot sampling/lab effort -  Fig.S1 ####
+##### Fig.S1 #####
 
 #samples completed for all assays
 F_early_long$all_sample <- case_when(F_early_long$`f-mucin` >= 0 & F_early_long$Polyparasitism >= 0 & F_early_long$`f-IgA` >=0 & F_early_long$`f-GCM` >=0 ~ F_early_long$sample_days)
@@ -83,16 +62,11 @@ sampling_distribution_final_all <- sampling_distribution_all +
 sampling_distribution_final_all
 
 
+##### Analysis #####
 
+#####  1.1 Survival to adulthood  #####
 
-
-##################################################################################################
-###        Models
-##############################################
-################################################################################################################
-##  1.1 Survival to adulthood  ##
-#################################################################################################################
-#sample size#
+# Sample size:
 
 dim(F_early_long) #68 obs
 ggplot(F_early_long, aes (x = Survival_Ad)) +
@@ -100,8 +74,7 @@ ggplot(F_early_long, aes (x = Survival_Ad)) +
   labs (x = "Survival_Ad", y = "count")
 table(F_early_long$Survival_Ad) # NO 21 Yes 48
 
-#assumptions
-# checking formatting of variable
+# Checking formatting of response variable
 is.factor(F_early_long$Survival_Ad) #FALSE
 F_early_long$Survival_Ad <- as.factor(F_early_long$Survival_Ad)
 contrasts(F_early_long$Survival_Ad)
@@ -109,9 +82,10 @@ contrasts(F_early_long$Survival_Ad)
 F_early_long$Survival_Ad <- droplevels(F_early_long$Survival_Ad)
 levels(F_early_long$Survival_Ad)
 
-##data distribution plots - Fig.S2 ##
-#independent variables
-# maternal rank
+##### Fig.S2 #####
+# Independent variables
+
+# Maternal rank
 plot_rank <- ggplot(F_early_long, aes(`maternal rank`)) +
   geom_histogram(color = "#000000", fill = "grey") +
   labs(,
@@ -119,7 +93,9 @@ plot_rank <- ggplot(F_early_long, aes(`maternal rank`)) +
        y = "Count"
   ) +
   theme_classic()
+
 #f-IgA
+
 plot_IgA <- ggplot(F_early_long, aes(`f-IgA`)) +
   geom_histogram(color = "#000000", fill = "grey") +
   labs(,
@@ -127,6 +103,7 @@ plot_IgA <- ggplot(F_early_long, aes(`f-IgA`)) +
        y = "Count"
   ) +
   theme_classic()
+
 #f-mucin
 plot_mucin<- ggplot(F_early_long, aes(`f-mucin`)) +
   geom_histogram(color = "#000000", fill = "grey") +
@@ -135,7 +112,8 @@ plot_mucin<- ggplot(F_early_long, aes(`f-mucin`)) +
        y = "Count"
   ) +
   theme_classic()
-#Ancylostoma egg load
+
+# Ancylostoma egg load
 plot_Ancy <- ggplot(F_early_long, aes(`Ancylostoma egg load`)) +
   geom_histogram(color = "#000000", fill = "grey") +
   labs(,
@@ -143,7 +121,8 @@ plot_Ancy <- ggplot(F_early_long, aes(`Ancylostoma egg load`)) +
        y = "Count"
   ) +
   theme_classic()
-#Polyparasitism
+
+# Polyparasitism
 plot_rich <- ggplot(F_early_long, aes(Polyparasitism)) +
   geom_histogram(color = "#000000", fill = "grey") +
   labs(,
@@ -151,7 +130,8 @@ plot_rich <- ggplot(F_early_long, aes(Polyparasitism)) +
        y = "Count"
   ) +
   theme_classic()
-#f-GCM
+
+# f-GCM
 plot_cort <- ggplot(F_early_long, aes(`f-GCM`)) +
   geom_histogram(color = "#000000", fill = "grey") +
   labs(,
@@ -160,14 +140,15 @@ plot_cort <- ggplot(F_early_long, aes(`f-GCM`)) +
   ) +
   theme_classic()
 
-## agregate plots
-Sampling_plot <- grid.arrange (plot_rank, plot_Ancy,plot_rich, plot_IgA, plot_mucin, plot_cort, nrow=3)
-###
 
-##########################################################
-## glm ##
+Sampling_plot <- grid.arrange (plot_rank, plot_Ancy,plot_rich, plot_IgA, plot_mucin, plot_cort, nrow=3)
+
+
+# GLM:
+
 F_early_long_Surv <- F_early_long
-#normalization of variables to mean 0 and sd 1
+
+# Normalization of variables to mean 0 and sd 1
 F_early_long_Surv$`maternal rank` <- scale(F_early_long_Surv$`maternal rank`)
 F_early_long_Surv$`Ancylostoma egg load` <- scale(F_early_long_Surv$`Ancylostoma egg load`)
 F_early_long_Surv$Polyparasitism <- scale(F_early_long_Surv$Polyparasitism)
@@ -175,7 +156,6 @@ F_early_long_Surv$`f-IgA` <- scale(F_early_long_Surv$`f-IgA`)
 F_early_long_Surv$`f-mucin` <- scale(F_early_long_Surv$`f-mucin`)
 F_early_long_Surv$`f-GCM` <- scale(F_early_long_Surv$`f-GCM`)
 
-#model
 model_survival <- glm (Survival_Ad ~ `maternal rank` +
                          `Ancylostoma egg load` + Polyparasitism + `f-IgA` + `f-mucin` + `f-GCM`,
                        family = "binomial", data = F_early_long_Surv)
@@ -183,8 +163,7 @@ summary(model_survival)
 
 exp(cbind(Odds_Ratio = coef(model_survival), confint(model_survival)))
 
-#################
-####### LRT
+# Likelihood-Ratio-Tests (LRT)
 update_nested <- function(object, formula., ..., evaluate = TRUE){
   update(object = object, formula. = formula., data = object$model, ..., evaluate = evaluate)
 }
@@ -202,7 +181,6 @@ m7 = update_nested(m1, . ~ . - Polyparasitism)
 m8 = update_nested(m1, . ~ . - `f-GCM`)
 
 
-lrtest(m5,m1) #intercept
 lrtest(m4,m1) # Ancylostoma egg load
 lrtest(m3,m1) #f-IgA
 lrtest(m2,m1) # maternal rank
@@ -210,8 +188,8 @@ lrtest(m6,m1) # f-mucin
 lrtest(m7,m1) # Polyparasitism
 lrtest(m8,m1) # f-GCM
 
-##########################################################
-##plot of significant effects - Fig. 1
+##### Fig. 1 #####
+
 F_early_long_Surv_plot <- F_early_long
 is.factor(F_early_long_Surv_plot$Survival_Ad) #FALSE
 F_early_long_Surv_plot$Survival_Ad <- as.factor(F_early_long_Surv_plot$Survival_Ad)
@@ -219,7 +197,6 @@ contrasts(F_early_long_Surv_plot$Survival_Ad)
 
 F_early_long_Surv_plot$Survival_Ad <- droplevels(F_early_long_Surv_plot$Survival_Ad)
 levels(F_early_long_Surv_plot$Survival_Ad)
-library(dplyr)
 F_early_long_Surv_plot <- F_early_long_Surv_plot %>%
   rename(maternal_rank = `maternal rank`,
          Ancylostoma_egg_load = `Ancylostoma egg load`,
@@ -273,13 +250,13 @@ Ancy_plot <- ggpredict(model_survival, terms = c("Ancylostoma_egg_load[all]")) |
         panel.grid.minor = element_blank(),
         plot.subtitle = element_text(face = "bold", size = 18))
 
-# combine the plots into a single row
+# Combine the plots into a single row
 Survival_plot <- Maternal_plot + IgA_plot + Ancy_plot
 Survival_plot
 
-#save file
+# Save file
 ggsave(
-  filename = "Survival.png",
+  filename = "Fig.1.png",
   plot = Survival_plot,
   width = 297,
   height = 210,
@@ -288,60 +265,6 @@ ggsave(
 )
 
 
-#################################################################################
-##  Confirmation at 6m                                  ##
-################################################################################
-
-# restrict dataset to observations within 0.5 years of living
-F_early_long_6m <- subset(F_early_long,F_early_long$sample_days<= 183)
-dim(F_early_long_6m) #51obs
-length(unique(F_early_long_6m$ID)) # 51 female individuals
-sum(duplicated(F_early_long_6m)) # 0  duplicates
-
-
-#################################################
-## model ###
-################################################
-#normalization of variables to mean 0 and sd 1
-F_early_long_6m$`maternal rank` <- scale(F_early_long_6m$`maternal rank`)
-F_early_long_6m$`Ancylostoma egg load` <- scale(F_early_long_6m$`Ancylostoma egg load`)
-F_early_long_6m$Polyparasitism <- scale(F_early_long_6m$Polyparasitism)
-F_early_long_6m$`f-IgA` <- scale(F_early_long_6m$`f-IgA`)
-F_early_long_6m$`f-mucin` <- scale(F_early_long_6m$`f-mucin`)
-F_early_long_6m$`f-GCM` <- scale(F_early_long_6m$`f-GCM`)
-
-model_survival_6m <- glm (Survival_Ad ~ `maternal rank` +
-                            `Ancylostoma egg load` + Polyparasitism +`f-IgA` + `f-mucin` + `f-GCM`,
-                          family = "binomial", data = F_early_long_6m)
-summary(model_survival_6m)
-
-exp(cbind(Odds_Ratio = coef(model_survival), confint(model_survival)))
-
-###############
-#LRT
-update_nested <- function(object, formula., ..., evaluate = TRUE){
-  update(object = object, formula. = formula., data = object$model, ..., evaluate = evaluate)
-}
-
-m1 =  glm (Survival_Ad ~ `maternal rank` +
-             `f-IgA` + `f-mucin` + Polyparasitism +  `Ancylostoma egg load` +
-             `f-GCM`,
-           family = "binomial", data = F_early_long_6m)
-m2 = update_nested(m1, . ~ . - `maternal rank`)
-m3 = update_nested(m1, . ~ . - `f-IgA`)
-m4 = update_nested(m1, . ~ . - `Ancylostoma egg load`)
-m5 = update_nested(m1, . ~ . - `maternal rank` - `f-IgA` - `Ancylostoma egg load` - `f-mucin` - Polyparasitism - `f-GCM`)
-m6 = update_nested(m1, . ~ . - `f-mucin`)
-m7 = update_nested(m1, . ~ . - Polyparasitism)
-m8 = update_nested(m1, . ~ . - `f-GCM`)
-
-lrtest(m5,m1)
-lrtest(m4,m1) # Ancylostoma egg load
-lrtest(m3,m1) # f-IgA
-lrtest(m2,m1) # maternal rank
-lrtest(m6,m1) # f-mucin
-lrtest(m7,m1) # Polyparasitism
-lrtest(m8,m1) # f-GCM
 
 
 ##################################################################################
@@ -441,7 +364,7 @@ forest_plot <- forest_plot +
 forest_plot
 
 #save file
-ggsave("HR_AFR.png",
+ggsave("Fig.2.png",
        plot = forest_plot,
        width = 210,
        height = 148.5,
@@ -638,7 +561,7 @@ forest_plot <- forest_plot +
 forest_plot
 
 #save file
-ggsave("HR_LV.png",
+ggsave("Fig.3.png",
        plot = forest_plot,
        width = 210,
        height = 148.5,
@@ -788,7 +711,7 @@ Adj_curve <- ggplot(surv_data_long, aes(x = time, y = estimate, color = group)) 
   )
 
 #save file
-ggsave("Adj_maternal.png",
+ggsave("Fig.4.png",
        plot = Adj_curve,
        width = 210,
        height = 148.5,
